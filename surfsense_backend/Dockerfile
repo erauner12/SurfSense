@@ -37,6 +37,7 @@ WORKDIR /app
 # Prevent uvloop compatibility issues
 ENV PYTHONPATH=/app
 ENV UVICORN_LOOP=asyncio
+ENV DISABLE_FFMPEG_CHECK=""
 
 RUN useradd -u 1001 -r -s /sbin/nologin appuser
 

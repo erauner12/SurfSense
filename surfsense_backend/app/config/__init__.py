@@ -1,3 +1,4 @@
+# Users can set DISABLE_FFMPEG_CHECK=true to skip all FFmpeg logic
 import os
 from pathlib import Path
 import shutil
@@ -25,16 +26,28 @@ def is_ffmpeg_installed():
     return shutil.which("ffmpeg") is not None
 
 
+def audio_features_enabled() -> bool:
+    """True if either TTS or STT is configured with a real provider."""
+    wants_tts = os.getenv("TTS_SERVICE", "").strip()
+    wants_stt = os.getenv("STT_SERVICE", "").strip()
+    override = os.getenv("DISABLE_FFMPEG_CHECK", "").lower() in {"1", "true"}
+    return not override and (bool(wants_tts) or bool(wants_stt))
+
 
 class Config:
     # Check if ffmpeg is installed
-    if not is_ffmpeg_installed():
-        import static_ffmpeg # Corrected: Import the main module
-        # ffmpeg installed on first call to add_paths(), threadsafe.
-        static_ffmpeg.add_paths() # Corrected: Call add_paths() from the main module
-        # check if ffmpeg is installed again
+    if audio_features_enabled():
         if not is_ffmpeg_installed():
-            raise ValueError("FFmpeg is not installed on the system. Please install it to use the Surfsense Podcaster.")
+            import static_ffmpeg # Corrected: Import the main module # noqa: WPS433 – runtime import on purpose
+            # ffmpeg installed on first call to add_paths(), threadsafe.
+            static_ffmpeg.add_paths() # Corrected: Call add_paths() from the main module
+            # check if ffmpeg is installed again
+            if not is_ffmpeg_installed():
+                raise ValueError(
+                    "Audio features requested (TTS_SERVICE or STT_SERVICE is set) but FFmpeg is missing. "
+                    "Either install FFmpeg, or unset TTS_SERVICE and STT_SERVICE, "
+                    "or set DISABLE_FFMPEG_CHECK=true to bypass this check."
+                )
     
     # Database
     DATABASE_URL = os.getenv("DATABASE_URL")
