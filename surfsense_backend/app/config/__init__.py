@@ -29,9 +29,9 @@ def is_ffmpeg_installed():
 class Config:
     # Check if ffmpeg is installed
     if not is_ffmpeg_installed():
-        import static_ffmpeg
+        import static_ffmpeg # Corrected: Import the main module
         # ffmpeg installed on first call to add_paths(), threadsafe.
-        static_ffmpeg.add_paths()
+        static_ffmpeg.add_paths() # Corrected: Call add_paths() from the main module
         # check if ffmpeg is installed again
         if not is_ffmpeg_installed():
             raise ValueError("FFmpeg is not installed on the system. Please install it to use the Surfsense Podcaster.")

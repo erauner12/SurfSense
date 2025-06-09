@@ -23,6 +23,8 @@ NEXT_PUBLIC_API_URL=http://backend:8000
 
 # Backend Configuration
 BACKEND_PORT=8000
+# Authentication type: "LOCAL" for email/password (default), or "GOOGLE" for Google OAuth.
+AUTH_TYPE=LOCAL
 
 # Database Configuration
 POSTGRES_USER=postgres
@@ -190,3 +192,5 @@ When you run `docker compose up` without additional flags, Docker automatically 
 When you run `docker compose -f docker-compose.yml up`, only the specified file is used.
 
 This approach lets you maintain a cleaner codebase without manually commenting/uncommenting services in your configuration files. 
+
+```
