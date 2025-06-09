@@ -1055,4 +1055,81 @@ class ConnectorService:
         
         return result_object, discord_chunks
 
+    async def search_todoist(self, user_query: str, user_id: str, search_space_id: int, top_k: int = 20, search_mode: SearchMode = SearchMode.CHUNKS) -> tuple:
+        """
+        Search for Todoist tasks and return both the source information and langchain documents
+
+        Args:
+            user_query: The user's query
+            user_id: The user's ID
+            search_space_id: The search space ID to search in
+            top_k: Maximum number of results to return
+
+        Returns:
+            tuple: (sources_info, langchain_documents)
+        """
+        document_type = "TODOIST_CONNECTOR"
+        if search_mode == SearchMode.CHUNKS:
+            todoist_chunks = await self.chunk_retriever.hybrid_search(
+                query_text=user_query,
+                top_k=top_k,
+                user_id=user_id,
+                search_space_id=search_space_id,
+                document_type=document_type
+            )
+        elif search_mode == SearchMode.DOCUMENTS:
+            todoist_chunks = await self.document_retriever.hybrid_search(
+                query_text=user_query,
+                top_k=top_k,
+                user_id=user_id,
+                search_space_id=search_space_id,
+                document_type=document_type
+            )
+            todoist_chunks = self._transform_document_results(todoist_chunks)
+
+        if not todoist_chunks:
+            return {
+                "id": 12,
+                "name": "Todoist",
+                "type": "TODOIST_CONNECTOR",
+                "sources": [],
+            }, []
+
+        sources_list = []
+        async with self.counter_lock:
+            for _i, chunk in enumerate(todoist_chunks):
+                document = chunk.get('document', {})
+                metadata = document.get('metadata', {})
+
+                task_content = document.get('title', 'Todoist Task').replace('Todoist - ', '')
+                due_date = metadata.get('due_date')
+
+                title = f"Todoist: {task_content}"
+                if due_date:
+                    title += f" (due: {due_date})"
+
+                description = chunk.get('content', '')[:100]
+                if len(description) == 100:
+                    description += "..."
+
+                url = f"https://todoist.com/app/task/{metadata.get('task_id')}" if metadata.get('task_id') else ""
+
+                source = {
+                    "id": document.get('id', self.source_id_counter),
+                    "title": title,
+                    "description": description,
+                    "url": url,
+                }
+
+                self.source_id_counter += 1
+                sources_list.append(source)
+
+        result_object = {
+            "id": 12,
+            "name": "Todoist",
+            "type": "TODOIST_CONNECTOR",
+            "sources": sources_list,
+        }
+
+        return result_object, todoist_chunks
 

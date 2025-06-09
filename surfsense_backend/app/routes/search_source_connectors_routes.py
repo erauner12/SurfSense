@@ -19,7 +19,7 @@ from app.schemas import SearchSourceConnectorCreate, SearchSourceConnectorUpdate
 from app.users import current_active_user
 from app.utils.check_ownership import check_ownership
 from pydantic import BaseModel, Field, ValidationError
-from app.tasks.connectors_indexing_tasks import index_slack_messages, index_notion_pages, index_github_repos, index_linear_issues, index_discord_messages
+from app.tasks.connectors_indexing_tasks import index_slack_messages, index_notion_pages, index_github_repos, index_linear_issues, index_discord_messages, index_todoist_tasks
 from app.connectors.github_connector import GitHubConnector
 from datetime import datetime, timedelta
 import logging
@@ -359,6 +359,16 @@ async def index_connector_content(
             )
             response_message = "Discord indexing started in the background."
 
+        elif connector.connector_type == SearchSourceConnectorType.TODOIST_CONNECTOR:
+            # Run indexing in background
+            logger.info(
+                f"Triggering Todoist indexing for connector {connector_id} into search space {search_space_id} from {indexing_from} to {indexing_to}"
+            )
+            background_tasks.add_task(
+                run_todoist_indexing_with_new_session, connector_id, search_space_id, indexing_from, indexing_to
+            )
+            response_message = "Todoist indexing started in the background."
+
         else:
             raise HTTPException(
                 status_code=400,
@@ -632,3 +642,55 @@ async def run_discord_indexing(
             logger.error(f"Discord indexing failed or no documents processed: {error_or_warning}")
     except Exception as e:
         logger.error(f"Error in background Discord indexing task: {str(e)}")
+
+
+# Add new helper functions for Todoist indexing
+async def run_todoist_indexing_with_new_session(
+    connector_id: int,
+    search_space_id: int,
+    start_date: str,
+    end_date: str
+):
+    """
+    Create a new session and run the Todoist indexing task.
+    This prevents session leaks by creating a dedicated session for the background task.
+    """
+    async with async_session_maker() as session:
+        await run_todoist_indexing(session, connector_id, search_space_id, start_date, end_date)
+
+async def run_todoist_indexing(
+    session: AsyncSession,
+    connector_id: int,
+    search_space_id: int,
+    start_date: str,
+    end_date: str
+):
+    """
+    Background task to run Todoist indexing.
+    Args:
+        session: Database session
+        connector_id: ID of the Todoist connector
+        search_space_id: ID of the search space
+        start_date: Start date for indexing
+        end_date: End date for indexing
+    """
+    try:
+        # Index Todoist tasks without updating last_indexed_at (we'll do it separately)
+        documents_processed, error_or_warning = await index_todoist_tasks(
+            session=session,
+            connector_id=connector_id,
+            search_space_id=search_space_id,
+            start_date=start_date,
+            end_date=end_date,
+            update_last_indexed=False  # Don't update timestamp in the indexing function
+        )
+
+        # Only update last_indexed_at if indexing was successful (either new docs or updated docs)
+        if documents_processed > 0:
+            await update_connector_last_indexed(session, connector_id)
+            logger.info(f"Todoist indexing completed successfully: {documents_processed} documents processed")
+        else:
+            if error_or_warning:
+                logger.error(f"Todoist indexing failed or no documents processed: {error_or_warning}")
+    except Exception as e:
+        logger.error(f"Error in background Todoist indexing task: {str(e)}")
