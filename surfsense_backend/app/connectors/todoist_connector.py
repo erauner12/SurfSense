@@ -85,6 +85,11 @@ class TodoistConnector:
             tasks_iterator = self.api.filter_tasks(query=query)
             for tasks_page in tasks_iterator:
                 for task in tasks_page:
+                    # SKIP recurring tasks
+                    if (task.due and getattr(task.due, "is_recurring", False)) or \
+                       (task.deadline and getattr(task.deadline, "is_recurring", False)):
+                        continue  # ignore this task entirely
+
                     task_dict = task.to_dict()
                     task_dict['url'] = task.url
                     all_tasks.append(task_dict)
@@ -103,11 +108,16 @@ class TodoistConnector:
                 )
                 for completed_tasks_page in completed_tasks_iterator:
                     for task in completed_tasks_page:
-                        task_dict = task.to_dict()
-                        task_dict['url'] = task.url
-                        all_tasks.append(task_dict)
-            except Exception as e:
-                error_messages.append(f"Error fetching completed tasks: {str(e)}")
+                        # SKIP recurring tasks
+                        if (task.due and getattr(task.due, "is_recurring", False)) or \
+                           (task.deadline and getattr(task.deadline, "is_recurring", False)):
+                            continue  # ignore this task entirely
+
+                    task_dict = task.to_dict()
+                    task_dict['url'] = task.url
+                    all_tasks.append(task_dict)
+        except Exception as e:
+            error_messages.append(f"Error fetching completed tasks: {str(e)}")
 
         if not all_tasks and not error_messages:
             return [], "No tasks found in the specified date range."
