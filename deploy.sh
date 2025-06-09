@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-###############################################################################
-# 1) Authenticate once per shell (fail fast if $CR_PAT is missing / empty)
-###############################################################################
-: "${CR_PAT:?Environment variable CR_PAT must contain your GHCR PAT}"
-
-echo -n "$CR_PAT" | \
-  docker login ghcr.io -u erauner12 --password-stdin
-
 ###############################################################################
 # 2) Ensure we have a buildx builder called "multi" and switch to it
 ###############################################################################
@@ -17,7 +8,7 @@ docker buildx create --name multi --use 2>/dev/null || docker buildx use multi
 ###############################################################################
 # 3) Pick the tag that both images should share
 ###############################################################################
-VERSION="v0.1.3"                 # <── bump this when you want a new release
+VERSION="v0.1.4"                 # <── bump this when you want a new release
 # If you still want the commit hash as a *third* tag, uncomment the next line.
 # SHA=$(git rev-parse --short HEAD)
 

@@ -44,6 +44,9 @@ COPY --from=builder /usr/local /usr/local
 # Copy source code
 COPY . .
 
+# Add permission changes before switching user
+RUN chown -R 1001:0 /app && chmod -R g=u /app /tmp
+
 USER appuser
 
 # Run
