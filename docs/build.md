@@ -35,6 +35,11 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 # …same pattern for surfsense_web…
 ```
 
+## 4. Note: pnpm is now available in the runtime image
+
+The Dockerfile for `surfsense_web` now enables Corepack and activates pnpm in the runtime stage.
+You do **not** need to manually install pnpm in your container or change the entrypoint –
+`CMD ["pnpm", "start"]` works out of the box.
 
 ---
 
