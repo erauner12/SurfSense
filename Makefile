@@ -55,19 +55,13 @@ dev-images: backend-dev ui-dev
 PLAT ?= linux/amd64,linux/arm64
 TAG  ?= pr-$(shell date +%s)
 
-# build context    image name (repo suffix only)
-CTX  := surfsense_backend surfsense_web
-NAME := surfsense_backend surfsense_ui
-
 push-all:
-	@echo "⤵ Platforms: $(PLAT)  •  Tag: $(TAG)"
-	@$(eval i=0)
-	@for ctx in $(CTX); do \
-		img=$$(echo $(NAME) | cut -d' ' -f $$((++i))); \
-		echo "🚀  Building $$img:$(TAG) from ./$$ctx …"; \
-		docker buildx build ./$$ctx \
-			--platform $(PLAT) \
-			-t ghcr.io/$(OWNER)/$$img:$(TAG) \
-			--push ; \
-	done
-	@echo "✅  Pushed backend & UI as tag '$(TAG)'"
+	docker buildx build ./surfsense_backend \
+		--platform $(PLAT) \
+		-t ghcr.io/$(OWNER)/surfsense_backend:$(TAG) \
+		--push
+	docker buildx build ./surfsense_web \
+		--platform $(PLAT) \
+		-t ghcr.io/$(OWNER)/surfsense_ui:$(TAG) \
+		--push
+	@echo "✅  Both images pushed with tag '$(TAG)'"
