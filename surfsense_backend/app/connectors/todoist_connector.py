@@ -4,7 +4,7 @@ Todoist Connector Module
 A module for retrieving tasks from Todoist.
 """
 from todoist_api_python.api import TodoistAPI
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 
 class TodoistConnector:
@@ -54,14 +54,14 @@ class TodoistConnector:
         include_completed: bool = False
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
-        Fetch tasks created within a date range.
-        Todoist API does not support filtering by updated_at, so we only filter by created_at.
-        Completed tasks are not fetched as the REST API does not support fetching them by date range.
+        Fetch tasks created within a date range using a filter query.
+        Todoist API does not support filtering by updated_at.
+        This method fetches only active tasks. Completed tasks are not included.
         
         Args:
             start_date: Start date in YYYY-MM-DD format
             end_date: End date in YYYY-MM-DD format (inclusive)
-            include_completed: Whether to include completed tasks. (Not currently supported)
+            include_completed: This parameter is currently ignored.
             
         Returns:
             Tuple containing (tasks list, error message or None)
@@ -70,24 +70,31 @@ class TodoistConnector:
             return [], "Todoist token not initialized. Call set_token() first."
 
         try:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            end_dt_inclusive = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
         except ValueError as e:
             return [], f"Invalid date format: {str(e)}. Please use YYYY-MM-DD."
 
         try:
-            all_tasks = self.api.get_tasks()
-            
-            filtered_tasks = []
-            for task in all_tasks:
-                created_at_dt = datetime.fromisoformat(task.created_at.replace('Z', '+00:00'))
-                if start_dt <= created_at_dt <= end_dt_inclusive:
-                    filtered_tasks.append(task.to_dict())
-            
-            if not filtered_tasks:
+            # To get tasks from start_date to end_date inclusive, we need to query for
+            # tasks created after (start_date - 1 day) AND created before (end_date + 1 day).
+            prev_day = start_dt - timedelta(days=1)
+            next_day = end_dt + timedelta(days=1)
+
+            query = f"created after: {prev_day.strftime('%Y-%m-%d')} & created before: {next_day.strftime('%Y-%m-%d')}"
+        
+            all_tasks = []
+            tasks_iterator = self.api.filter_tasks(query=query)
+            for tasks_page in tasks_iterator:
+                for task in tasks_page:
+                    task_dict = task.to_dict()
+                    task_dict['url'] = task.url  # Manually add url from property
+                    all_tasks.append(task_dict)
+        
+            if not all_tasks:
                 return [], "No tasks found in the specified date range."
-            
-            return filtered_tasks, None
+        
+            return all_tasks, None
         except Exception as e:
             return [], f"Error fetching tasks: {str(e)}"
 
@@ -97,7 +104,7 @@ class TodoistConnector:
         
         Args:
             raw: The task object from Todoist API
-            
+        
         Returns:
             Formatted task dictionary
         """
@@ -107,8 +114,7 @@ class TodoistConnector:
             "project_id": raw.get("project_id"),
             "content": raw.get("content"),
             "description": raw.get("description"),
-            "comment_count": raw.get("comment_count"),
-            "is_completed": raw.get("is_completed"),
+            "is_completed": raw.get("completed_at") is not None,
             "labels": raw.get("labels"),
             "priority": raw.get("priority"),
             "created_at": raw.get("created_at"),
@@ -149,10 +155,8 @@ class TodoistConnector:
         
         if task.get('description'):
             markdown += f"## Description\n\n{task['description']}\n\n"
+    
         
-        if task.get('comment_count', 0) > 0:
-            markdown += f"**Comments:** {task['comment_count']}\n\n"
-            
         return markdown
 
     @staticmethod

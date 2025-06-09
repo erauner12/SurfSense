@@ -1086,7 +1086,6 @@ async def index_todoist_tasks(
                         "project_id": formatted_task.get("project_id"),
                         "due_date": formatted_task.get("due_date"),
                         "priority": formatted_task.get("priority"),
-                        "comment_count": formatted_task.get("comment_count"),
                         "indexed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     },
                     content=summary_content,
