@@ -19,7 +19,7 @@ endef
 
 .PHONY: backend-image ui-image \
 		backend-dev ui-dev dev-images \
-		push
+		push-all
 
 backend-image:
 	$(call buildx,surfsense_backend,$(BACKEND_IMAGE))
@@ -51,15 +51,23 @@ ui-dev:
 dev-images: backend-dev ui-dev
 	@echo "✅  Local images built with tag '$(TAG)'"
 
-# ---------- Simplified remote push ----------
-# Usage: make push IMG=surfsense_backend TAG=test
+# ---- Simplified remote push-all ---------------------------------
 PLAT ?= linux/amd64,linux/arm64
-IMG ?= surfsense_backend
-TAG ?= pr-$(shell date +%s)
+TAG  ?= pr-$(shell date +%s)
 
-push:
-	docker buildx build ./$(IMG) \
-		--platform $(PLAT) \
-		-t ghcr.io/$(OWNER)/$(IMG):$(TAG) \
-		--push
-	@echo "🚀  pushed ghcr.io/$(OWNER)/$(IMG):$(TAG)"
+# build context    image name (repo suffix only)
+CTX  := surfsense_backend surfsense_web
+NAME := surfsense_backend surfsense_ui
+
+push-all:
+	@echo "⤵ Platforms: $(PLAT)  •  Tag: $(TAG)"
+	@$(eval i=0)
+	@for ctx in $(CTX); do \
+		img=$$(echo $(NAME) | cut -d' ' -f $$((++i))); \
+		echo "🚀  Building $$img:$(TAG) from ./$$ctx …"; \
+		docker buildx build ./$$ctx \
+			--platform $(PLAT) \
+			-t ghcr.io/$(OWNER)/$$img:$(TAG) \
+			--push ; \
+	done
+	@echo "✅  Pushed backend & UI as tag '$(TAG)'"
