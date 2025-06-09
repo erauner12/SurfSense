@@ -1022,7 +1022,8 @@ async def index_todoist_tasks(
         # Get tasks within date range
         tasks, error = todoist_client.get_tasks_by_date_range(
             start_date=start_date_str,
-            end_date=end_date_str
+            end_date=end_date_str,
+            include_completed=True
         )
         
         if error:
@@ -1048,6 +1049,13 @@ async def index_todoist_tasks(
         
         for task in tasks:
             try:
+                # Delta indexing: skip tasks that haven't been updated
+                if connector.last_indexed_at and task.get('updated_at'):
+                    task_updated_at = datetime.fromisoformat(task['updated_at'].replace('Z', '+00:00'))
+                    if task_updated_at < connector.last_indexed_at:
+                        documents_skipped += 1
+                        continue
+
                 task_id = task.get("id")
                 task_content_title = task.get("content")
                 
@@ -1069,7 +1077,21 @@ async def index_todoist_tasks(
                     documents_skipped += 1
                     continue
                 
-                summary_content = f"Todoist Task: {task_content_title}\n\nPriority: {formatted_task.get('priority')}\nDue: {formatted_task.get('due_date')}"
+                # Enrich metadata
+                metadata = {
+                    **formatted_task,
+                    'indexed_at': datetime.now(timezone.utc).isoformat()
+                }
+
+                # Richer summary
+                priority = metadata.get("priority")
+                deadline_obj = metadata.get("deadline")
+                deadline = deadline_obj.get('date') if deadline_obj else "None"
+                is_completed = metadata.get("is_completed")
+                summary_content = (f"Todoist Task: {task_content_title}\n\n"
+                                   f"Priority: {priority}\n"
+                                   f"Deadline: {deadline}\n"
+                                   f"Completed: {is_completed}\n")
                 summary_embedding = config.embedding_model_instance.embed(summary_content)
                 
                 chunks = [
@@ -1077,17 +1099,15 @@ async def index_todoist_tasks(
                     for chunk in config.chunker_instance.chunk(task_content_md)
                 ]
                 
+                # Update title
+                completed_marker = " (✓)" if is_completed else ""
+                doc_title = f"Todoist - {task_content_title}{completed_marker}"
+                
                 document = Document(
                     search_space_id=search_space_id,
-                    title=f"Todoist - {task_content_title}",
+                    title=doc_title,
                     document_type=DocumentType.TODOIST_CONNECTOR,
-                    document_metadata={
-                        "task_id": task_id,
-                        "project_id": formatted_task.get("project_id"),
-                        "due_date": formatted_task.get("due_date"),
-                        "priority": formatted_task.get("priority"),
-                        "indexed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    },
+                    document_metadata=metadata,
                     content=summary_content,
                     content_hash=content_hash,
                     embedding=summary_embedding,

@@ -51,17 +51,15 @@ class TodoistConnector:
         self,
         start_date: str,
         end_date: str,
-        include_completed: bool = False
+        include_completed: bool = True
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
-        Fetch tasks created within a date range using a filter query.
-        Todoist API does not support filtering by updated_at.
-        This method fetches only active tasks. Completed tasks are not included.
+        Fetch tasks created or completed within a date range.
         
         Args:
             start_date: Start date in YYYY-MM-DD format
             end_date: End date in YYYY-MM-DD format (inclusive)
-            include_completed: This parameter is currently ignored.
+            include_completed: Whether to include completed tasks.
             
         Returns:
             Tuple containing (tasks list, error message or None)
@@ -75,28 +73,46 @@ class TodoistConnector:
         except ValueError as e:
             return [], f"Invalid date format: {str(e)}. Please use YYYY-MM-DD."
 
+        all_tasks = []
+        error_messages = []
+
+        # Fetch active tasks created in range
         try:
-            # To get tasks from start_date to end_date inclusive, we need to query for
-            # tasks created after (start_date - 1 day) AND created before (end_date + 1 day).
             prev_day = start_dt - timedelta(days=1)
             next_day = end_dt + timedelta(days=1)
-
             query = f"created after: {prev_day.strftime('%Y-%m-%d')} & created before: {next_day.strftime('%Y-%m-%d')}"
         
-            all_tasks = []
             tasks_iterator = self.api.filter_tasks(query=query)
             for tasks_page in tasks_iterator:
                 for task in tasks_page:
                     task_dict = task.to_dict()
-                    task_dict['url'] = task.url  # Manually add url from property
+                    task_dict['url'] = task.url
                     all_tasks.append(task_dict)
-        
-            if not all_tasks:
-                return [], "No tasks found in the specified date range."
-        
-            return all_tasks, None
         except Exception as e:
-            return [], f"Error fetching tasks: {str(e)}"
+            error_messages.append(f"Error fetching active tasks: {str(e)}")
+
+        # Fetch completed tasks if requested
+        if include_completed:
+            try:
+                start_dt_utc = start_dt.replace(tzinfo=timezone.utc)
+                end_dt_utc = end_dt.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                
+                completed_tasks_iterator = self.api.get_completed_tasks_by_completion_date(
+                    since=start_dt_utc,
+                    until=end_dt_utc
+                )
+                for completed_tasks_page in completed_tasks_iterator:
+                    for task in completed_tasks_page:
+                        task_dict = task.to_dict()
+                        task_dict['url'] = task.url
+                        all_tasks.append(task_dict)
+            except Exception as e:
+                error_messages.append(f"Error fetching completed tasks: {str(e)}")
+
+        if not all_tasks and not error_messages:
+            return [], "No tasks found in the specified date range."
+
+        return all_tasks, "; ".join(error_messages) if error_messages else None
 
     def format_task(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -108,18 +124,25 @@ class TodoistConnector:
         Returns:
             Formatted task dictionary
         """
-        due = raw.get("due")
         return {
-            "id": raw.get("id"),
-            "project_id": raw.get("project_id"),
-            "content": raw.get("content"),
-            "description": raw.get("description"),
-            "is_completed": raw.get("completed_at") is not None,
-            "labels": raw.get("labels"),
-            "priority": raw.get("priority"),
-            "created_at": raw.get("created_at"),
-            "due_date": due.get("date") if due else None,
-            "url": raw.get("url"),
+            'id': raw.get('id'),
+            'project_id': raw.get('project_id'),
+            'section_id': raw.get('section_id'),
+            'parent_id': raw.get('parent_id'),
+            'content': raw.get('content'),
+            'description': raw.get('description'),
+            'is_completed': raw.get('completed_at') is not None,
+            'labels': raw.get('labels', []),
+            'priority': raw.get('priority'),
+            'created_at': raw.get('created_at'),
+            'updated_at': raw.get('updated_at'),
+            'due': raw.get('due'),
+            'deadline': raw.get('deadline'),
+            'duration': raw.get('duration'),
+            'assignee_id': raw.get('assignee_id'),
+            'assigner_id': raw.get('assigner_id'),
+            'meta': raw.get('meta'),
+            'url': raw.get('url'),
         }
 
     def format_task_to_markdown(self, task: Dict[str, Any]) -> str:
@@ -138,9 +161,24 @@ class TodoistConnector:
             markdown += f"**Status:** Completed\n"
         else:
             markdown += f"**Status:** Open\n"
-        
-        if task.get('due_date'):
-            markdown += f"**Due:** {task['due_date']}\n"
+
+        if task.get('deadline'):
+            deadline = task['deadline']
+            if deadline and deadline.get('date'):
+                 markdown += f"**Deadline:** {deadline['date']}\n"
+        if task.get('duration'):
+            duration = task['duration']
+            if duration and duration.get('amount') and duration.get('unit'):
+                markdown += f"**Duration:** {duration['amount']} {duration['unit']}\n"
+        if task.get('assignee_id'):
+            markdown += f"**Assignee ID:** {task['assignee_id']}\n"
+        if task.get('updated_at'):
+            markdown += f"**Updated:** {self.format_date(task['updated_at'])}\n"
+
+        if task.get('due'):
+            due = task['due']
+            if due and due.get('date'):
+                markdown += f"**Due:** {due['date']}\n"
         
         if task.get('priority'):
             priorities = {1: "P4 (Low)", 2: "P3 (Medium)", 3: "P2 (High)", 4: "P1 (Urgent)"}

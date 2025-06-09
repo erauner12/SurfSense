@@ -1101,24 +1101,29 @@ class ConnectorService:
                 document = chunk.get('document', {})
                 metadata = document.get('metadata', {})
 
-                task_content = document.get('title', 'Todoist Task').replace('Todoist - ', '')
-                due_date = metadata.get('due_date')
+                task_content = document.get('title', 'Todoist Task').replace('Todoist - ', '').replace(' (✓)', '').strip()
+                
+                state = '✓' if metadata.get('is_completed') else ''
+                deadline = metadata.get('deadline')
+                deadline_date = deadline.get('date') if deadline else None
 
-                title = f"Todoist: {task_content}"
-                if due_date:
-                    title += f" (due: {due_date})"
+                base = f"Todoist: {task_content} {state}".strip()
+                if deadline_date:
+                    title = f"{base} (due {deadline_date})"
+                else:
+                    title = base
 
                 description = chunk.get('content', '')[:100]
                 if len(description) == 100:
                     description += "..."
 
-                url = f"https://todoist.com/app/task/{metadata.get('task_id')}" if metadata.get('task_id') else ""
-
                 source = {
                     "id": document.get('id', self.source_id_counter),
                     "title": title,
                     "description": description,
-                    "url": url,
+                    "url": metadata.get('url', ''),
+                    "priority": metadata.get('priority'),
+                    "is_completed": metadata.get('is_completed'),
                 }
 
                 self.source_id_counter += 1
@@ -1132,4 +1137,3 @@ class ConnectorService:
         }
 
         return result_object, todoist_chunks
-
