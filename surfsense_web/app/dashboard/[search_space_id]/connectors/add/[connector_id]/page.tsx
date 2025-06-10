@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { allConnectorParams, connectorCategories } from "../page"; // Adjusted relative path
+import { allConnectorParams, connectorCategories } from "@/lib/connectors"; // Adjusted import path
 import ConnectorDetailClient from "./connector-detail-client";
 
 export function generateStaticParams() {

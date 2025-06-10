@@ -1,6 +1,6 @@
 "use client";
 
-import { Connector, connectorCategories } from "../page"; // Path to where Connector type and categories are exported
+import { Connector, connectorCategories } from "@/lib/connectors";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
