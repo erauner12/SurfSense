@@ -25,7 +25,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 // Define the Connector type
-interface Connector {
+export interface Connector {
   id: string;
   title: string;
   description: string;
@@ -33,14 +33,14 @@ interface Connector {
   status: "available" | "coming-soon" | "connected";
 }
 
-interface ConnectorCategory {
+export interface ConnectorCategory {
   id: string;
   title: string;
   connectors: Connector[];
 }
 
 // Define connector categories and their connectors
-const connectorCategories: ConnectorCategory[] = [
+export const connectorCategories: ConnectorCategory[] = [
   {
     id: "search-engines",
     title: "Search Engines",
@@ -156,6 +156,11 @@ const connectorCategories: ConnectorCategory[] = [
     ],
   },
 ];
+
+// Provides the structure { connector_id: string }[] expected by generateStaticParams
+export const allConnectorParams = connectorCategories
+  .flatMap(category => category.connectors)
+  .map(connector => ({ connector_id: connector.id }));
 
 // Animation variants
 const fadeIn = {
