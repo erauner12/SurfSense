@@ -3,7 +3,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Roboto } from "next/font/google";
 
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { RootProvider } from 'fumadocs-ui/provider';
 

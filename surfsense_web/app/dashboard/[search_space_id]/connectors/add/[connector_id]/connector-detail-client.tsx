@@ -4,27 +4,19 @@ import { Connector, connectorCategories } from "@/lib/connectors";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
+import SingleKeyConnectorForm from "@/components/SingleKeyConnectorForm"; // Import the new form
 
 interface ConnectorDetailClientProps {
-  // connector: Connector; // Removed
-  connectorId: string; // Added
+  connectorId: string;
   searchSpaceId: string;
 }
 
 export default function ConnectorDetailClient({ connectorId, searchSpaceId }: ConnectorDetailClientProps) {
-  // const connectorId = connector.id; // Removed
-
-  // rebuild the connector object locally so we can render the icon safely
   const connector = connectorCategories
     .flatMap((c) => c.connectors)
     .find((c) => c.id === connectorId);
 
-  // If page.tsx guarantees connector exists (due to notFound()),
-  // we might not need a full error UI here, but a check is good practice.
-  // The user's diff used `!` which implies it's expected to be found.
   if (!connector) {
-    // This case should ideally be caught by notFound() in page.tsx
-    // For robustness, especially if this component could be used elsewhere:
     return (
         <div className="container mx-auto py-12 max-w-3xl text-center">
             <p className="text-red-500">Connector data could not be loaded.</p>
@@ -37,9 +29,6 @@ export default function ConnectorDetailClient({ connectorId, searchSpaceId }: Co
         </div>
     );
   }
-
-  // const connectorId = connector.id; // This is now a prop, so this line is not needed.
-  // The prop is already named connectorId.
 
   return (
     <div className="container mx-auto py-12 max-w-3xl">
@@ -76,28 +65,44 @@ export default function ConnectorDetailClient({ connectorId, searchSpaceId }: Co
           <p><strong>Search Space ID:</strong> {searchSpaceId}</p>
           <p><strong>Connector ID:</strong> {connectorId}</p>
 
-          {/* Placeholder for actual connection form/logic */}
           <div className="mt-8 pt-6 border-t">
             <h2 className="text-xl font-semibold mb-4">Configuration</h2>
             {connector.status === "available" && (
-              <p className="text-muted-foreground">
-                Connection form for "{connector.title}" will be displayed here.
-              </p>
+              connector.id === "todoist-connector" ? (
+                <SingleKeyConnectorForm
+                  connectorType="TODOIST_CONNECTOR"
+                  label="Todoist API Key"
+                  searchSpaceId={searchSpaceId}
+                  onSuccess={() => {
+                    // Navigate to the connectors list page after successful connection
+                    window.location.href = `/dashboard/${searchSpaceId}/connectors`;
+                  }}
+                />
+              ) : (
+                <p className="text-muted-foreground">
+                  Connection form for "{connector.title}" will be displayed here.
+                </p>
+              )
             )}
             {connector.status === "coming-soon" && (
               <p className="text-muted-foreground">
                 This connector is coming soon. Configuration will be available once released.
               </p>
             )}
-             {connector.status === "connected" && (
+            {connector.status === "connected" && (
               <p className="text-muted-foreground">
                 Manage your existing "{connector.title}" connection.
               </p>
             )}
-            {/* Example Button */}
+            
             <div className="mt-6">
-              {connector.status === "available" && <Button>Connect {connector.title}</Button>}
-              {connector.status === "connected" && <Button variant="destructive">Disconnect</Button>}
+              {/* Show generic connect button only if status is available AND it's NOT Todoist */}
+              {connector.status === "available" && connector.id !== "todoist-connector" && (
+                <Button>Connect {connector.title}</Button>
+              )}
+              {connector.status === "connected" && (
+                <Button variant="destructive">Disconnect</Button>
+              )}
             </div>
           </div>
         </div>

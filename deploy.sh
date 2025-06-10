@@ -8,7 +8,7 @@ docker buildx create --name multi --use 2>/dev/null || docker buildx use multi
 ###############################################################################
 # 3) Pick the tag that both images should share
 ###############################################################################
-VERSION="v0.2.1"                 # <── bump this when you want a new release
+VERSION="v0.2.2"                 # <── bump this when you want a new release
 # If you still want the commit hash as a *third* tag, uncomment the next line.
 # SHA=$(git rev-parse --short HEAD)
 
