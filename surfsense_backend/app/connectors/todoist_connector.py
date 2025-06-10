@@ -113,11 +113,11 @@ class TodoistConnector:
                            (task.deadline and getattr(task.deadline, "is_recurring", False)):
                             continue  # ignore this task entirely
 
-                    task_dict = task.to_dict()
-                    task_dict['url'] = task.url
-                    all_tasks.append(task_dict)
-        except Exception as e:
-            error_messages.append(f"Error fetching completed tasks: {str(e)}")
+                        task_dict = task.to_dict()
+                        task_dict['url'] = task.url
+                        all_tasks.append(task_dict)
+            except Exception as e:
+                error_messages.append(f"Error fetching completed tasks: {str(e)}")
 
         if not all_tasks and not error_messages:
             return [], "No tasks found in the specified date range."
