@@ -78,6 +78,7 @@ class TodoistConnector:
                         continue  # ignore this task entirely
 
                     task_dict = task.to_dict()
+                    task_dict['url'] = task.url
                     all_tasks.append(task_dict)
         except Exception as e:
             error_messages.append(f"Error fetching active tasks: {str(e)}")
