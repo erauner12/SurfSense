@@ -30,22 +30,10 @@ class TodoistConnector:
         self.token = token
         self.api = TodoistAPI(token)
 
-    def _headers(self) -> Dict[str, str]:
-        """
-        Get headers for Todoist API requests.
-        
-        Returns:
-            Dictionary of headers
-            
-        Raises:
-            ValueError: If no Todoist token has been set
-        """
-        if not self.token:
-            raise ValueError("Todoist token not initialized. Call set_token() first.")
-            
-        return {
-            'Authorization': f'Bearer {self.token}'
-        }
+    @staticmethod
+    def _is_recurring(task: Any) -> bool:
+        """Checks if a task is recurring."""
+        return hasattr(task, "due") and task.due and getattr(task.due, "is_recurring", False)
 
     def get_tasks_by_date_range(
         self,
@@ -86,12 +74,10 @@ class TodoistConnector:
             for tasks_page in tasks_iterator:
                 for task in tasks_page:
                     # SKIP recurring tasks
-                    if (task.due and getattr(task.due, "is_recurring", False)) or \
-                       (task.deadline and getattr(task.deadline, "is_recurring", False)):
+                    if self._is_recurring(task):
                         continue  # ignore this task entirely
 
                     task_dict = task.to_dict()
-                    task_dict['url'] = task.url
                     all_tasks.append(task_dict)
         except Exception as e:
             error_messages.append(f"Error fetching active tasks: {str(e)}")
@@ -109,12 +95,11 @@ class TodoistConnector:
                 for completed_tasks_page in completed_tasks_iterator:
                     for task in completed_tasks_page:
                         # SKIP recurring tasks
-                        if (task.due and getattr(task.due, "is_recurring", False)) or \
-                           (task.deadline and getattr(task.deadline, "is_recurring", False)):
+                        if self._is_recurring(task):
                             continue  # ignore this task entirely
 
                         task_dict = task.to_dict()
-                        task_dict['url'] = task.url
+                        task_dict['url'] = f"https://todoist.com/showTask?id={task.task_id}"
                         all_tasks.append(task_dict)
             except Exception as e:
                 error_messages.append(f"Error fetching completed tasks: {str(e)}")
@@ -147,7 +132,6 @@ class TodoistConnector:
             'created_at': raw.get('created_at'),
             'updated_at': raw.get('updated_at'),
             'due': raw.get('due'),
-            'deadline': raw.get('deadline'),
             'duration': raw.get('duration'),
             'assignee_id': raw.get('assignee_id'),
             'assigner_id': raw.get('assigner_id'),
@@ -172,12 +156,8 @@ class TodoistConnector:
         else:
             markdown += f"**Status:** Open\n"
 
-        if task.get('deadline'):
-            deadline = task['deadline']
-            if deadline and deadline.get('date'):
-                 markdown += f"**Deadline:** {deadline['date']}\n"
         if task.get('duration'):
-            duration = task['duration']
+            duration = task.get('duration')
             if duration and duration.get('amount') and duration.get('unit'):
                 markdown += f"**Duration:** {duration['amount']} {duration['unit']}\n"
         if task.get('assignee_id'):
@@ -186,7 +166,7 @@ class TodoistConnector:
             markdown += f"**Updated:** {self.format_date(task['updated_at'])}\n"
 
         if task.get('due'):
-            due = task['due']
+            due = task.get('due')
             if due and due.get('date'):
                 markdown += f"**Due:** {due['date']}\n"
         
