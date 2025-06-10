@@ -23,7 +23,13 @@ export const getConnectorTypeDisplay = (type: string): string => {
   const typeMap: Record<string, string> = {
     "SERPER_API": "Serper API",
     "TAVILY_API": "Tavily API",
-    // Add other connector types here as needed
+    "LINKUP_API": "Linkup API",
+    "SLACK_CONNECTOR": "Slack",
+    "NOTION_CONNECTOR": "Notion",
+    "GITHUB_CONNECTOR": "GitHub",
+    "LINEAR_CONNECTOR": "Linear",
+    "DISCORD_CONNECTOR": "Discord",
+    "TODOIST_CONNECTOR": "Todoist",
   };
   return typeMap[type] || type;
 };

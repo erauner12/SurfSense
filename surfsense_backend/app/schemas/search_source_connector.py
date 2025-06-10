@@ -102,6 +102,16 @@ class SearchSourceConnectorBase(BaseModel):
             if not config.get("DISCORD_BOT_TOKEN"):
                 raise ValueError("DISCORD_BOT_TOKEN cannot be empty")
 
+        elif connector_type == SearchSourceConnectorType.TODOIST_CONNECTOR:
+            # For TODOIST_CONNECTOR, only allow TODOIST_API_KEY
+            allowed_keys = ["TODOIST_API_KEY"]
+            if set(config.keys()) != set(allowed_keys):
+                raise ValueError(f"For TODOIST_CONNECTOR connector type, config must only contain these keys: {allowed_keys}")
+        
+            # Ensure the token is not empty
+            if not config.get("TODOIST_API_KEY"):
+                raise ValueError("TODOIST_API_KEY cannot be empty")
+
         return config
 
 class SearchSourceConnectorCreate(SearchSourceConnectorBase):

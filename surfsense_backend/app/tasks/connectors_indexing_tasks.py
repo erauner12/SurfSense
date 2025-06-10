@@ -12,6 +12,7 @@ from app.connectors.notion_history import NotionHistoryConnector
 from app.connectors.github_connector import GitHubConnector
 from app.connectors.linear_connector import LinearConnector
 from app.connectors.discord_connector import DiscordConnector
+from app.connectors.todoist_connector import TodoistConnector
 from slack_sdk.errors import SlackApiError
 import logging
 import asyncio
@@ -971,6 +972,193 @@ async def index_linear_issues(
         await session.rollback()
         logger.error(f"Failed to index Linear issues: {str(e)}", exc_info=True)
         return 0, f"Failed to index Linear issues: {str(e)}"
+
+async def index_todoist_tasks(
+    session: AsyncSession,
+    connector_id: int,
+    search_space_id: int,
+    start_date: str = None,
+    end_date: str = None,
+    update_last_indexed: bool = True
+) -> Tuple[int, Optional[str]]:
+    """
+    Index Todoist tasks.
+    
+    Args:
+        session: Database session
+        connector_id: ID of the Todoist connector
+        search_space_id: ID of the search space to store documents in
+        update_last_indexed: Whether to update the last_indexed_at timestamp (default: True)
+        
+    Returns:
+        Tuple containing (number of documents indexed, error message or None)
+    """
+    try:
+        # Get the connector
+        result = await session.execute(
+            select(SearchSourceConnector)
+            .filter(
+                SearchSourceConnector.id == connector_id,
+                SearchSourceConnector.connector_type == SearchSourceConnectorType.TODOIST_CONNECTOR
+            )
+        )
+        connector = result.scalars().first()
+        
+        if not connector:
+            return 0, f"Connector with ID {connector_id} not found or is not a Todoist connector"
+        
+        # Get the Todoist token from the connector config
+        todoist_token = connector.config.get("TODOIST_API_KEY")
+        if not todoist_token:
+            return 0, "Todoist API token not found in connector config"
+        
+        # Initialize Todoist client
+        todoist_client = TodoistConnector(token=todoist_token)
+        
+        # Calculate date range
+        if start_date is None or end_date is None:
+            # Fall back to calculating dates based on last_indexed_at
+            calculated_end_date = datetime.now()
+            
+            if connector.last_indexed_at:
+                last_indexed_naive = connector.last_indexed_at.replace(tzinfo=None) if connector.last_indexed_at.tzinfo else connector.last_indexed_at
+                if last_indexed_naive > calculated_end_date:
+                    logger.warning(f"Last indexed date ({last_indexed_naive.strftime('%Y-%m-%d')}) is in the future. Using 365 days ago instead.")
+                    calculated_start_date = calculated_end_date - timedelta(days=365)
+                else:
+                    calculated_start_date = last_indexed_naive
+                    logger.info(f"Using last_indexed_at ({calculated_start_date.strftime('%Y-%m-%d')}) as start date")
+            else:
+                calculated_start_date = calculated_end_date - timedelta(days=365)
+                logger.info(f"No last_indexed_at found, using {calculated_start_date.strftime('%Y-%m-%d')} (365 days ago) as start date")
+            
+            start_date_str = start_date if start_date else calculated_start_date.strftime("%Y-%m-%d")
+            end_date_str = end_date if end_date else calculated_end_date.strftime("%Y-%m-%d")
+        else:
+            start_date_str = start_date
+            end_date_str = end_date
+        
+        logger.info(f"Fetching Todoist tasks from {start_date_str} to {end_date_str}")
+        
+        # Get tasks within date range
+        tasks, error = todoist_client.get_tasks_by_date_range(
+            start_date=start_date_str,
+            end_date=end_date_str,
+            include_completed=True
+        )
+        
+        if error:
+            if "No tasks found" in error:
+                logger.info("No tasks found is not a critical error, continuing with update")
+                if update_last_indexed:
+                    connector.last_indexed_at = datetime.now()
+                    await session.commit()
+                return 0, None
+            else:
+                logger.error(f"Failed to get Todoist tasks: {error}")
+                return 0, f"Failed to get Todoist tasks: {error}"
+        
+        if not tasks:
+            logger.info("No Todoist tasks found for the specified date range")
+            if update_last_indexed:
+                connector.last_indexed_at = datetime.now()
+                await session.commit()
+            return 0, None
+        
+        documents_indexed = 0
+        documents_skipped = 0
+        
+        for task in tasks:
+            try:
+                # Delta indexing: skip tasks that haven't been updated
+                if connector.last_indexed_at and task.get('updated_at'):
+                    task_updated_at = datetime.fromisoformat(task['updated_at'].replace('Z', '+00:00'))
+                    if task_updated_at < connector.last_indexed_at:
+                        documents_skipped += 1
+                        continue
+
+                task_id = task.get("id")
+                task_content_title = task.get("content")
+                
+                if not task_id or not task_content_title:
+                    logger.warning(f"Skipping task with missing ID or content: {task_id or 'Unknown'}")
+                    documents_skipped += 1
+                    continue
+                
+                formatted_task = todoist_client.format_task(task)
+                task_content_md = todoist_client.format_task_to_markdown(formatted_task)
+                
+                content_hash = generate_content_hash(task_content_md)
+
+                existing_doc_by_hash_result = await session.execute(
+                    select(Document).where(Document.content_hash == content_hash)
+                )
+                if existing_doc_by_hash_result.scalars().first():
+                    logger.info(f"Document with content hash {content_hash} already exists for task {task_id}. Skipping.")
+                    documents_skipped += 1
+                    continue
+                
+                # Enrich metadata
+                metadata = {
+                    **formatted_task,
+                    'indexed_at': datetime.now(timezone.utc).isoformat()
+                }
+
+                # Richer summary
+                priority = metadata.get("priority")
+                deadline_obj = metadata.get("deadline")
+                deadline = deadline_obj.get('date') if deadline_obj else "None"
+                is_completed = metadata.get("is_completed")
+                summary_content = (f"Todoist Task: {task_content_title}\n\n"
+                                   f"Priority: {priority}\n"
+                                   f"Deadline: {deadline}\n"
+                                   f"Completed: {is_completed}\n")
+                summary_embedding = config.embedding_model_instance.embed(summary_content)
+                
+                chunks = [
+                    Chunk(content=chunk.text, embedding=config.embedding_model_instance.embed(chunk.text))
+                    for chunk in config.chunker_instance.chunk(task_content_md)
+                ]
+                
+                # Update title
+                completed_marker = " (✓)" if is_completed else ""
+                doc_title = f"Todoist - {task_content_title}{completed_marker}"
+                
+                document = Document(
+                    search_space_id=search_space_id,
+                    title=doc_title,
+                    document_type=DocumentType.TODOIST_CONNECTOR,
+                    document_metadata=metadata,
+                    content=summary_content,
+                    content_hash=content_hash,
+                    embedding=summary_embedding,
+                    chunks=chunks
+                )
+                
+                session.add(document)
+                documents_indexed += 1
+                
+            except Exception as e:
+                logger.error(f"Error processing task {task.get('id', 'Unknown')}: {str(e)}", exc_info=True)
+                documents_skipped += 1
+                continue
+        
+        if update_last_indexed and documents_indexed > 0:
+            connector.last_indexed_at = datetime.now()
+        
+        await session.commit()
+        
+        logger.info(f"Todoist indexing completed: {documents_indexed} new tasks, {documents_skipped} skipped")
+        return documents_indexed, None
+    
+    except SQLAlchemyError as db_error:
+        await session.rollback()
+        logger.error(f"Database error: {str(db_error)}", exc_info=True)
+        return 0, f"Database error: {str(db_error)}"
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Failed to index Todoist tasks: {str(e)}", exc_info=True)
+        return 0, f"Failed to index Todoist tasks: {str(e)}"
 
 async def index_discord_messages(
     session: AsyncSession,

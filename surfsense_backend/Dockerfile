@@ -38,6 +38,8 @@ WORKDIR /app
 ENV PYTHONPATH=/app
 ENV UVICORN_LOOP=asyncio
 ENV DISABLE_FFMPEG_CHECK=""
+# (optional) disable noisy multiprocess warning - this should be set via Helm/docker-compose
+ENV TOKENIZERS_PARALLELISM=false
 
 RUN useradd -u 1001 -r -s /sbin/nologin appuser
 

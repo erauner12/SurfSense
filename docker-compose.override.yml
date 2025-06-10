@@ -19,6 +19,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./surfsense_backend:/app
+      - hf_cache:/cache # Add named volume mount for HF cache
     depends_on:
       - db
     env_file:
@@ -29,3 +30,14 @@ services:
       - PYTHONPATH=/app
       - UVICORN_LOOP=asyncio
       - UNSTRUCTURED_HAS_PATCHED_LOOP=1
+      # Add these for local HF cache persistence
+      - HF_HOME=/cache/huggingface
+      - TOKENIZERS_PARALLELISM=false
+      # Remove these if they exist from previous configurations
+      # - HF_HOME=/app/.cache/huggingface
+      # - TRANSFORMERS_CACHE=/app/.cache/transformers
+
+volumes:
+  postgres_data: # This might already exist from docker-compose.yml
+  pgadmin_data:  # This might already exist from docker-compose.yml
+  hf_cache: {}   # Define the named volume for Hugging Face cache
