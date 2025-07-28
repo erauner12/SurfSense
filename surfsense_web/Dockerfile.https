@@ -1,0 +1,56 @@
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Install pnpm and git
+RUN npm install -g pnpm && \
+    apk add --no-cache git
+
+# Clone the repository
+RUN git clone https://github.com/erauner12/SurfSense.git /tmp/surfsense && \
+    cp -r /tmp/surfsense/surfsense_web/* /app/
+
+# Install dependencies  
+RUN pnpm install --frozen-lockfile
+
+# Builder stage
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Copy app with dependencies
+COPY --from=deps /app /app
+
+# Set build-time environment variables for HTTPS
+ENV NEXT_PUBLIC_FASTAPI_BACKEND_URL=https://surf-api.erauner.dev
+ENV NEXT_PUBLIC_API_URL=https://surf-api.erauner.dev
+ENV NEXT_PUBLIC_FASTAPI_BACKEND_AUTH_TYPE=LOCAL
+ENV NEXT_PUBLIC_ETL_SERVICE=LLAMACLOUD
+
+# Build the application
+RUN pnpm build
+
+# Runner stage
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Copy necessary files from builder
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-lock.yaml ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/content ./content
+COPY --from=builder /app/source.config.ts ./
+COPY --from=builder /app/next.config.ts ./
+COPY --from=builder /app/mdx-components.tsx ./
+
+EXPOSE 3000
+
+CMD ["pnpm", "start"]
